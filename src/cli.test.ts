@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadPipeline } from "./cli.ts";
+import { loadPipeline } from "./config/load.ts";
 
 describe("loadPipeline", () => {
   let root: string;

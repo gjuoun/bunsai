@@ -53,6 +53,9 @@ bun ../src/cli.ts run
 
 ## How it works
 
+- **One concern per module** — `src/pipeline/` (scheduler, `definePipeline`, and `src/pipeline/runner/*` split into `graph` / `step` / `pipeline-runner` / `run`), `src/services/` (state store, shell runner, logger, run config), `src/cli/` (command tree, run command, rendering), `src/config/load.ts` (config discovery). Every file stays under 300 lines and the relative-import graph must stay acyclic (`scripts/check-structure.ts`).
+- **Effect services with injected dependencies** — `StateStore`, `ShellRunner`, `LoggerService`, `RunConfig` and `PipelineRunner` are `Context.Tag` class services composed with Layers; the runner is constructed with its dependencies and reaches for no globals. `runPipeline(pipeline, options)` remains the Promise-based facade.
+- **Lazy per-module loading** — `src/index.ts` is the CLI-free public entry, `src/cli.ts` is a bootstrap that imports the `@effect/cli` program only under `import.meta.main`, and a pipeline config is imported on demand. `scripts/check-lazy.ts` proves it from the bundle graph, with the eager program bundle as a positive control.
 - **DAG scheduling** — steps declare `dependsOn`; independent steps run in parallel (bounded by an Effect `Semaphore`, default concurrency 4). Cycles, duplicate names, and unknown deps are rejected up front with actionable errors; a cycle error lists the stuck steps.
 - **Step context** — every `run(ctx)` gets `{ cwd, env, logger, shell }`. `shell(cmd)` runs via `Bun.spawn` with inherited stdio, returns the exit code, and throws a plain `Error` naming the failing step on non-zero exit.
 - **Retries** — `retries: n` gives a step n automatic retries with exponential backoff (50ms base, 2s cap), managed by Effect.
@@ -84,8 +87,12 @@ Implemented and tested (`bun test`, colocated `*.test.ts`):
 ## Development
 
 ```sh
-bun test          # run the colocated test suites
-bunx tsc -p tsconfig.json   # strict typecheck
+bun test                            # colocated test suites
+bunx tsc -p tsconfig.json --noEmit  # strict typecheck
+bun run check                       # test + typecheck + structure + lazy gates
+bun run verify:examples             # both example pipelines, end to end
 ```
+
+Gates: `scripts/check-structure.ts` enforces the 300-line cap and an acyclic relative-import graph; `scripts/check-lazy.ts` proves the core entry and the bin stay free of eager CLI code; `scripts/verify-examples.sh` reruns `examples/` and `examples/docker-app/` from clean state.
 
 Runtime dependencies: `effect`, `@effect/cli` (typed argument parsing, built-in `--help`), `@effect/platform-bun`.

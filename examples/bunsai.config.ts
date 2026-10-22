@@ -1,6 +1,6 @@
 import { mkdirSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { definePipeline } from "../src/types.ts";
+import { definePipeline } from "../src/index.ts";
 
 /**
  * Demo pipeline for bunsai 0.1 — run it from this directory:

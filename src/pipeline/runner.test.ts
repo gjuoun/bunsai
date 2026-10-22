@@ -2,9 +2,9 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runPipeline } from "./runner.ts";
-import { loadState } from "./state.ts";
-import type { Pipeline, PipelineStep, Logger } from "./types.ts";
+import { runPipeline } from "./runner/run.ts";
+import { loadState } from "../services/state.ts";
+import type { Pipeline, PipelineStep, Logger } from "../types.ts";
 
 let root: string;
 let logs: string[];
