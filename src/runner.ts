@@ -1,4 +1,4 @@
-import { Duration, Effect, Result, Semaphore } from "effect";
+import { Cause, Duration, Effect, Exit } from "effect";
 import { makeShell } from "./shell.ts";
 import { topoLayers } from "./scheduler.ts";
 import { loadState, saveState, type PipelineState, type StepRecord } from "./state.ts";
@@ -97,7 +97,7 @@ export async function runPipeline(pipeline: Pipeline, options: RunOptions): Prom
 
   const outcomes: StepOutcome[] = [];
   const blocked = new Set<string>(); // steps whose state is failure or dep-blocked
-  const semaphore = await Effect.runPromise(Semaphore.make(concurrency));
+  const semaphore = Effect.unsafeMakeSemaphore(concurrency);
   const runStart = Date.now();
 
   const runOne = (step: PipelineStep): Effect.Effect<StepOutcome> =>
@@ -117,13 +117,13 @@ export async function runPipeline(pipeline: Pipeline, options: RunOptions): Prom
         while (attempts < totalAttempts) {
           attempts++;
           const attempt = attempts;
-          const outcome = yield* Effect.result(
+          const outcome = yield* Effect.exit(
             Effect.tryPromise({
               try: () => Promise.resolve(step.run(ctx)),
               catch: (e) => (e instanceof Error ? e : new Error(String(e))),
             })
           );
-          if (Result.isSuccess(outcome)) {
+          if (Exit.isSuccess(outcome)) {
             const durationMs = Date.now() - start;
             const record: StepRecord = {
               status: "success",
@@ -136,7 +136,8 @@ export async function runPipeline(pipeline: Pipeline, options: RunOptions): Prom
             saveState(root, state);
             return { name: step.name, status: "success" as const, attempts, durationMs };
           }
-          failure = outcome.failure instanceof Error ? outcome.failure : new Error(String(outcome.failure));
+          const squashed = Cause.squash(outcome.cause);
+          failure = squashed instanceof Error ? squashed : new Error(String(squashed));
           logger.error(`step "${step.name}" attempt ${attempt}/${totalAttempts} failed: ${failure.message}`);
           if (attempts < totalAttempts) {
             yield* Effect.sleep(Duration.millis(backoffMs(attempts)));

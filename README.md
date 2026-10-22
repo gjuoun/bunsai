@@ -88,4 +88,4 @@ bun test          # run the colocated test suites
 bunx tsc -p tsconfig.json   # strict typecheck
 ```
 
-Runtime dependency: `effect` only. CLI arg parsing is hand-rolled `process.argv`; no framework.
+Runtime dependencies: `effect`, `@effect/cli` (typed argument parsing, built-in `--help`), `@effect/platform-bun`.

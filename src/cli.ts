@@ -1,57 +1,18 @@
 #!/usr/bin/env bun
 /**
  * bunsai CLI — `bunsai run [--from <step>] [--force]`.
+ * Argument parsing is @effect/cli (typed options, --help, wizard-ready);
+ * platform services come from @effect/platform-bun.
  * Loads ./bunsai.config.ts from the cwd, runs the pipeline, prints per-step
  * timing and a final summary. Exit code 0 on success, 1 on failure.
  */
+import { CliConfig, Command, Options } from "@effect/cli";
+import { BunContext } from "@effect/platform-bun";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { Effect, Option } from "effect";
 import { runPipeline } from "./runner.ts";
 import type { Pipeline } from "./types.ts";
-
-export interface CliArgs {
-  command: string;
-  from?: string;
-  force: boolean;
-}
-
-const USAGE = 'usage: bunsai run [--from <step>] [--force]';
-
-/** Parse CLI arguments by hand — bunsai needs no argument-parsing dependency. */
-export function parseArgs(argv: string[]): CliArgs {
-  const args: CliArgs = { command: "", force: false };
-  const rest = [...argv];
-  if (rest.length === 0) {
-    throw new Error(`${USAGE}\n(no command given — only "run" is implemented in 0.1)`);
-  }
-  const command = rest.shift()!;
-  if (command !== "run") {
-    throw new Error(`unknown command "${command}"\n${USAGE}`);
-  }
-  args.command = command;
-
-  while (rest.length > 0) {
-    const arg = rest.shift()!;
-    if (arg === "--force") {
-      args.force = true;
-    } else if (arg === "--from") {
-      const value = rest.shift();
-      if (value === undefined || value.startsWith("--")) {
-        throw new Error(`--from requires a step name, e.g. --from build\n${USAGE}`);
-      }
-      args.from = value;
-    } else if (arg.startsWith("--from=")) {
-      const value = arg.slice("--from=".length);
-      if (value.length === 0) {
-        throw new Error(`--from requires a step name, e.g. --from=build\n${USAGE}`);
-      }
-      args.from = value;
-    } else {
-      throw new Error(`unknown flag "${arg}"\n${USAGE}`);
-    }
-  }
-  return args;
-}
 
 /** Load and validate <cwd>/bunsai.config.ts (default export or named `pipeline`). */
 export async function loadPipeline(cwd: string): Promise<Pipeline> {
@@ -59,8 +20,8 @@ export async function loadPipeline(cwd: string): Promise<Pipeline> {
   if (!existsSync(configPath)) {
     throw new Error(
       `bunsai: no bunsai.config.ts found in ${cwd}. Create one exporting a pipeline, e.g.\n` +
-        "  import { definePipeline } from \"bunsai\";\n" +
-        "  export default definePipeline({ steps: [{ name: \"build\", run: (ctx) => ctx.shell(\"make build\") }] });\n" +
+        '  import { definePipeline } from "bunsai";\n' +
+        '  export default definePipeline({ steps: [{ name: "build", run: (ctx) => ctx.shell("make build") }] });\n' +
         "See examples/bunsai.config.ts for a fuller demo."
     );
   }
@@ -80,19 +41,12 @@ function formatMs(ms: number): string {
 
 const ICONS = { success: "✓", failure: "✗", skipped: "⤼" } as const;
 
-export async function main(argv: string[]): Promise<number> {
-  let args: CliArgs;
-  try {
-    args = parseArgs(argv);
-  } catch (err) {
-    console.error(err instanceof Error ? err.message : String(err));
-    return 1;
-  }
-
+/** Execute the `run` command and return the process exit code. */
+export async function executeRun(from: string | undefined, force: boolean): Promise<number> {
   const cwd = process.cwd();
   try {
     const pipeline = await loadPipeline(cwd);
-    const result = await runPipeline(pipeline, { root: cwd, from: args.from, force: args.force });
+    const result = await runPipeline(pipeline, { root: cwd, from, force });
 
     console.log("");
     console.log("steps:");
@@ -119,6 +73,37 @@ export async function main(argv: string[]): Promise<number> {
   }
 }
 
+const runCommand = Command.make(
+  "run",
+  {
+    from: Options.optional(
+      Options.text("from").pipe(Options.withDescription("rerun this step and everything downstream of it"))
+    ),
+    force: Options.boolean("force").pipe(Options.withDescription("ignore the cache and rerun all steps")),
+  },
+  ({ from, force }) =>
+    Effect.promise(async () => {
+      process.exitCode = await executeRun(Option.isSome(from) ? from.value : undefined, force);
+    })
+);
+
+const rootCommand = Command.make("bunsai", {}, () => Effect.void).pipe(Command.withSubcommands([runCommand]));
+
+export const cli = Command.run(rootCommand, {
+  name: "bunsai",
+  version: "0.1.0",
+});
+
 if (import.meta.main) {
-  process.exit(await main(process.argv.slice(2)));
+  await Effect.runPromise(
+    cli(process.argv).pipe(
+      Effect.provide(BunContext.layer),
+      Effect.provide(CliConfig.layer())
+    )
+  ).catch((err: unknown) => {
+    // ValidationError from @effect/cli already renders usage; anything else gets a plain message
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(msg);
+    process.exitCode = 1;
+  });
 }

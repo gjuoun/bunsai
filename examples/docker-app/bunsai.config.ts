@@ -40,21 +40,25 @@ export default definePipeline({
   steps: [
     {
       name: "install",
-      run: (ctx) => ctx.shell("bun install"),
+      run: async (ctx) => {
+        await ctx.shell("bun install");
+      },
     },
     {
       name: "test",
       dependsOn: ["install"],
-      run: (ctx) => ctx.shell("bun test"),
+      run: async (ctx) => {
+        await ctx.shell("bun test");
+      },
     },
     {
       name: "docker-build",
       dependsOn: ["test"],
       retries: 1,
-      run: (ctx) => {
+      run: async (ctx) => {
         const cli = containerCli();
         ctx.logger.info(`building image with ${cli}`);
-        return ctx.shell(`${cli} build -t ${IMAGE} .`);
+        await ctx.shell(`${cli} build -t ${IMAGE} .`);
       },
     },
     {
