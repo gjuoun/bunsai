@@ -12,5 +12,9 @@
   "license": "MIT",
   "dependencies": {
     "effect": "^4.0.5"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.3",
+    "typescript": "5.9"
   }
 }

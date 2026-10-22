@@ -1,12 +1,15 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeShell } from "./shell.ts";
 
 let root: string;
-test(() => {
+beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "bunsai-shell-"));
+});
+afterEach(() => {
+  rmSync(root, { recursive: true, force: true });
 });
 
 describe("makeShell", () => {
@@ -37,8 +40,4 @@ describe("makeShell", () => {
     const shell = makeShell("env-step", root, { ...process.env, BUNSAI_PROBE: "42" });
     expect(await shell('test "$BUNSAI_PROBE" = 42')).toBe(0);
   });
-});
-
-test(() => {
-  rmSync(root, { recursive: true, force: true });
 });

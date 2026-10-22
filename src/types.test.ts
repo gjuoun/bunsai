@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { definePipeline } from "./types.ts";
+import { definePipeline, type Pipeline } from "./types.ts";
 
 describe("definePipeline", () => {
   test("returns the pipeline as-is (identity, for type inference)", () => {
@@ -39,7 +39,7 @@ describe("definePipeline", () => {
   test("rejects a step without a run function", () => {
     expect(() =>
       definePipeline({
-        steps: [{ name: "x" } as unknown as { name: string }],
+        steps: [{ name: "x" } as unknown as Pipeline["steps"][number]],
       })
     ).toThrow(/run/);
   });
