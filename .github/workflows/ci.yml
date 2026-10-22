@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # The repo's own gates, run directly on the runner.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - run: bash scripts/verify-examples.sh
+
+  # Dogfood: the composite action at the repo root runs the published
+  # container image against bunsai's own bunsai.config.ts. This is the real
+  # "bunsai as a containerized CI worker" path — image from ghcr, action
+  # wiring, config discovery, all exercised on GitHub's runners.
+  action-dogfood:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          args: run
