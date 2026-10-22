@@ -9,8 +9,8 @@ import type { PipelineStep } from "../types.ts";
  * - dependencies on unknown steps
  * - dependency cycles (message lists every step stuck in the cycle)
  */
-export function topoLayers(steps: PipelineStep[]): string[][] {
-  const byName = new Map<string, PipelineStep>();
+export function topoLayers<S extends { name: string; dependsOn?: string[] }>(steps: readonly S[]): string[][] {
+  const byName = new Map<string, S>();
   for (const step of steps) {
     if (byName.has(step.name)) {
       throw new Error(`duplicate step name "${step.name}" — step names must be unique`);
