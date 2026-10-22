@@ -24,7 +24,7 @@ describe("FileRunLog", () => {
     expect(log.dir).toContain(join(".bunsai", "logs", log.runId));
     const record = readRunRecord(runPath(root, log.runId));
     expect(record.runId).toBe(log.runId);
-    expect(record.schemaVersion).toBe(1);
+    expect(record.schemaVersion).toBe(2);
     expect(record.steps).toEqual([]);
     expect(lines.some((l) => l.includes(log.runId))).toBe(true);
   });

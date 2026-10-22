@@ -82,7 +82,7 @@ export const runStep = (
         };
         runtime.state[step.name] = record;
         yield* runtime.store.save(runtime.state);
-        yield* runtime.runLog.recordStep({ ...record, name: step.name, logPath });
+        yield* runtime.runLog.recordStep({ ...record, name: step.name, logPath, dependsOn: step.dependsOn });
         return { name: step.name, status: "success" as const, attempts, durationMs };
       }
       const squashed = Cause.squash(outcome.cause);
@@ -105,7 +105,7 @@ export const runStep = (
     };
     runtime.state[step.name] = record;
     yield* runtime.store.save(runtime.state);
-    yield* runtime.runLog.recordStep({ ...record, name: step.name, logPath, error });
+    yield* runtime.runLog.recordStep({ ...record, name: step.name, logPath, error, dependsOn: step.dependsOn });
     logger.error(`step "${step.name}" failed after ${attempts} attempt(s): ${error}`);
     return { name: step.name, status: "failure" as const, attempts, durationMs, error };
   });

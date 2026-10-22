@@ -17,6 +17,7 @@ import { RunLog } from "../../services/run-log.ts";
 import type { RunLogShape } from "../../services/run-log.ts";
 import { StateStore } from "../../services/state-store.ts";
 import type { StateStoreShape } from "../../services/state-store.ts";
+import { cacheVerdict } from "../cache-verdict.ts";
 import { hashStep } from "../input-hash.ts";
 import { topoLayers } from "../scheduler.ts";
 import { downstreamOf } from "./graph.ts";
@@ -91,18 +92,16 @@ export class LivePipelineRunner implements PipelineRunnerShape {
             ? undefined
             : yield* Effect.sync(() => hashStep(step, config.cwd));
           const forced = config.force || rerunSet.has(name);
-          const previouslyOk = prior[name]?.status === "success";
-          const hashMatches = inputHash !== undefined && prior[name]?.inputHash === inputHash;
-          const cached = !forced && previouslyOk && hashMatches;
+          const verdict = cacheVerdict(prior[name], inputHash, { forced });
           if (depBlocked) {
             blocked.add(name);
             const startedAt = new Date().toISOString();
             const record: StepRecord = { status: "skipped", startedAt, attempts: 0 };
             state[name] = record;
             yield* store.save(state);
-            yield* runLog.recordStep({ name, status: "skipped", attempts: 0, startedAt });
+            yield* runLog.recordStep({ name, status: "skipped", attempts: 0, startedAt, dependsOn: step.dependsOn });
             outcomes.push({ name, status: "skipped", attempts: 0 });
-          } else if (cached) {
+          } else if (verdict.cached) {
             logger.info(`skip (cached): ${name}`);
             yield* runLog.recordStep({
               name,
@@ -111,10 +110,11 @@ export class LivePipelineRunner implements PipelineRunnerShape {
               startedAt: new Date().toISOString(),
               cached: true,
               inputHash,
+              dependsOn: step.dependsOn,
             });
             outcomes.push({ name, status: "skipped", attempts: prior[name]!.attempts, cached: true });
           } else {
-            if (!forced && previouslyOk && !hashMatches) {
+            if (verdict.reason === "input-changed") {
               logger.info(`cache invalidated: ${name} (input hash changed)`);
             }
             runnable.push({ step, inputHash: inputHash! });

@@ -71,6 +71,7 @@ describe("run logging", () => {
     expect(boom.status).toBe("failure");
     expect(boom.error).toContain("kaboom");
     expect(boom.logPath).toBeDefined();
+    expect(boom.dependsOn).toBeUndefined();
 
     const second = await runPipeline(pipeline, opts());
     expect(second.ok).toBe(false);
@@ -81,6 +82,7 @@ describe("run logging", () => {
     const blocked = secondRecord.steps.find((s) => s.name === "after")!;
     expect(blocked.status).toBe("skipped");
     expect(blocked.cached).toBeUndefined();
+    expect(blocked.dependsOn).toEqual(["boom"]);
     expect(calls).toBe(2);
   });
 });

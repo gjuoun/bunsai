@@ -11,12 +11,20 @@ const runCommand = Command.make(
     ),
     force: Options.boolean("force").pipe(Options.withDescription("ignore the cache and rerun all steps")),
     last: Options.boolean("last").pipe(
-      Options.withDescription("print the previous run's summary and tail the failed step's log (runs nothing)")
+      Options.withDescription("print the previous run's graph and summary, and tail the failed step's log (runs nothing)")
+    ),
+    dryRun: Options.boolean("dry-run").pipe(
+      Options.withDescription("render the layered graph of what would run, with cache verdicts (runs nothing)")
     ),
   },
-  ({ from, force, last }) =>
+  ({ from, force, last, dryRun }) =>
     Effect.promise(async () => {
-      process.exitCode = await executeRun(Option.isSome(from) ? from.value : undefined, force, last);
+      process.exitCode = await executeRun({
+        from: Option.isSome(from) ? from.value : undefined,
+        force,
+        last,
+        dryRun,
+      });
     })
 );
 
@@ -24,7 +32,7 @@ const rootCommand = Command.make("bunsai", {}, () => Effect.void).pipe(Command.w
 
 export const cli = Command.run(rootCommand, {
   name: "bunsai",
-  version: "0.2.0",
+  version: "0.2.5",
 });
 
 /** Run the CLI for one argv and return the process exit code. */

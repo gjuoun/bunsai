@@ -16,6 +16,12 @@ export interface RunStepRecord {
   inputHash?: string;
   /** Absolute path of the step log, when one was written. */
   logPath?: string;
+  /**
+   * Dependencies this step declared at run time. Lets `run --last` rebuild the
+   * layered graph without loading the pipeline config; absent in records
+   * written before 0.2.5.
+   */
+  dependsOn?: string[];
   error?: string;
 }
 
@@ -25,7 +31,8 @@ export interface RunStepRecord {
  * truth, one record per step) and cannot represent multiple runs.
  */
 export interface RunRecordFile {
-  schemaVersion: 1;
+  /** 2 adds per-step `dependsOn` edges (0.2.5); 1 = pre-graph records. */
+  schemaVersion: 1 | 2;
   runId: string;
   startedAt: string;
   endedAt?: string;
@@ -36,7 +43,7 @@ export interface RunRecordFile {
   steps: RunStepRecord[];
 }
 
-export const RUN_SCHEMA_VERSION = 1;
+export const RUN_SCHEMA_VERSION = 2;
 
 /**
  * Sortable, filesystem-safe run id: UTC <yyyymmdd>T<hhmmss><mmm>Z.
