@@ -99,7 +99,7 @@ export class LivePipelineRunner implements PipelineRunnerShape {
             const record: StepRecord = { status: "skipped", startedAt, attempts: 0 };
             state[name] = record;
             yield* store.save(state);
-            yield* runLog.recordStep({ name, status: "skipped", attempts: 0, startedAt });
+            yield* runLog.recordStep({ name, status: "skipped", attempts: 0, startedAt, dependsOn: step.dependsOn });
             outcomes.push({ name, status: "skipped", attempts: 0 });
           } else if (verdict.cached) {
             logger.info(`skip (cached): ${name}`);
@@ -110,6 +110,7 @@ export class LivePipelineRunner implements PipelineRunnerShape {
               startedAt: new Date().toISOString(),
               cached: true,
               inputHash,
+              dependsOn: step.dependsOn,
             });
             outcomes.push({ name, status: "skipped", attempts: prior[name]!.attempts, cached: true });
           } else {

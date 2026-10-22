@@ -1,13 +1,16 @@
 import { readFileSync } from "node:fs";
-import type { RunStepRecord } from "../services/run-record.ts";
-import { latestRunPath, readRunRecord, tailLines } from "../services/run-record.ts";
-import { formatMs, renderStepLine } from "./render.ts";
+import { topoLayers } from "../pipeline/scheduler.ts";
+import type { RunRecordFile, RunStepRecord } from "../services/run-record.ts";
+import { RUN_SCHEMA_VERSION, latestRunPath, readRunRecord, tailLines } from "../services/run-record.ts";
+import { renderResultGraph } from "./graph-render.ts";
+import type { ResultStepView } from "./graph-render.ts";
+import { formatMs } from "./render.ts";
 
 const TAIL_LINES = 40;
 
 /**
- * `bunsai run --last`: report the newest recorded run and tail every failed
- * step's log. Read-only — no step executes.
+ * `bunsai run --last`: report the newest recorded run, its layered graph, and
+ * tail every failed step's log. Read-only — no step executes.
  */
 export function executeLast(root: string): number {
   const path = latestRunPath(root);
@@ -19,8 +22,7 @@ export function executeLast(root: string): number {
   const total = record.durationMs !== undefined ? ` [${formatMs(record.durationMs)}]` : "";
   console.log("");
   console.log(`run ${record.runId} — ${record.startedAt}${total}`);
-  console.log("steps:");
-  for (const step of record.steps) console.log("  " + renderStepLine(step));
+  printGraph(record);
 
   const failed = record.steps.filter((s) => s.status === "failure");
   const ok = record.ok === true && failed.length === 0;
@@ -31,6 +33,36 @@ export function executeLast(root: string): number {
 
   for (const step of failed) tailStepLog(step);
   return 0;
+}
+
+function viewOf(step: RunStepRecord): ResultStepView {
+  return {
+    status: step.status,
+    cached: step.cached,
+    attempts: step.attempts,
+    durationMs: step.durationMs,
+    dependsOn: step.dependsOn,
+  };
+}
+
+/**
+ * Layers come from the record's own `dependsOn` edges, so no config load is
+ * needed. A record written before 0.2.5 carries no edges: every step is shown
+ * as one unordered group, labelled instead of guessed.
+ */
+function printGraph(record: RunRecordFile): void {
+  const views = new Map(record.steps.map((step) => [step.name, viewOf(step)]));
+  if (record.schemaVersion < RUN_SCHEMA_VERSION) {
+    console.log("order unknown (record written before dependency edges were recorded)");
+    for (const line of renderResultGraph([record.steps.map((step) => step.name)], views)) console.log(line);
+    return;
+  }
+  try {
+    for (const line of renderResultGraph(topoLayers(record.steps), views)) console.log(line);
+  } catch (err) {
+    console.log(`graph incomplete: ${err instanceof Error ? err.message : String(err)}`);
+    for (const line of renderResultGraph([record.steps.map((step) => step.name)], views)) console.log(line);
+  }
 }
 
 function tailStepLog(step: RunStepRecord): void {

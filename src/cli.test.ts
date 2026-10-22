@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadPipeline } from "./config/load.ts";
@@ -129,6 +129,7 @@ describe("cli end-to-end (@effect/cli)", () => {
     const replay = runCli(["run", "--last"], root);
     expect(replay.exitCode).toBe(0);
     expect(replay.out).toContain("run 2");
+    expect(replay.out).toContain("layers: 1 · 1 steps");
     expect(replay.out).toContain("boom");
     expect(replay.out).toContain("✗ run failed — 1 step(s) failed");
     expect(replay.out).toContain("(last 40 lines)");
@@ -148,11 +149,78 @@ describe("cli end-to-end (@effect/cli)", () => {
     expect(forced.out).toContain("--force");
   });
 
+  test("--last cannot be combined with --dry-run", () => {
+    const bad = runCli(["run", "--last", "--dry-run"], root);
+    expect(bad.exitCode).toBe(1);
+    expect(bad.out).toContain("--dry-run");
+  });
+
+  test("post-run output renders the layered graph instead of a flat list", () => {
+    writeFileSync(
+      join(root, "bunsai.config.ts"),
+      `export default {
+  steps: [
+    { name: "build", run: () => {} },
+    { name: "deploy", dependsOn: ["build"], retries: 1, run: () => {} },
+  ],
+};
+`
+    );
+    const run = runCli(["run"], root);
+    expect(run.exitCode).toBe(0);
+    expect(run.out).toContain("layers: 2 · 2 steps");
+    expect(run.out).toContain("L1  └─ build");
+    expect(run.out).toContain("L2  └─ deploy");
+    expect(run.out).toContain("(1 attempt) ← build");
+    expect(run.out).not.toContain("steps:");
+    expect(run.out).toContain("2/2 steps succeeded");
+  });
+
+  test("--dry-run renders verdicts and executes nothing", () => {
+    writeFileSync(
+      join(root, "bunsai.config.ts"),
+      `export default {
+  steps: [
+    {
+      name: "materialize",
+      run: (ctx) => {
+        require("node:fs").writeFileSync(ctx.cwd + "/ran.txt", "executed");
+      },
+    },
+    { name: "deploy", dependsOn: ["materialize"], retries: 2, run: () => {} },
+  ],
+};
+`
+    );
+    const dry = runCli(["run", "--dry-run"], root);
+    expect(dry.exitCode).toBe(0);
+    expect(dry.out).toContain("layers: 2 · 2 steps");
+    expect(dry.out).toContain("└─ deploy");
+    expect(dry.out).toContain("run ← materialize · retries 2");
+    expect(dry.out).toContain("dry-run: nothing executed");
+    expect(existsSync(join(root, "ran.txt"))).toBe(false);
+    expect(existsSync(join(root, ".bunsai"))).toBe(false);
+  });
+
+  test("--dry-run reads the cache state and honours --force", () => {
+    writeFileSync(join(root, "bunsai.config.ts"), `export default { steps: [{ name: "build", run: () => {} }] };`);
+    expect(runCli(["run"], root).exitCode).toBe(0);
+    const dry = runCli(["run", "--dry-run"], root);
+    expect(dry.exitCode).toBe(0);
+    expect(dry.out).toContain("cached");
+    const forced = runCli(["run", "--dry-run", "--force"], root);
+    expect(forced.out).toContain("run (forced)");
+    const from = runCli(["run", "--dry-run", "--from", "nope"], root);
+    expect(from.exitCode).toBe(1);
+    expect(from.out).toContain('--from step "nope" not found');
+  });
+
   test("--help exits 0 and documents --from/--force", () => {
     const help = runCli(["run", "--help"], root);
     expect(help.exitCode).toBe(0);
     expect(help.out).toContain("--from");
     expect(help.out).toContain("--force");
+    expect(help.out).toContain("--dry-run");
   });
 
   test("unknown flag exits non-zero with an error", () => {

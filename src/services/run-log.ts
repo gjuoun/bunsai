@@ -3,7 +3,7 @@ import { closeSync, existsSync, mkdirSync, openSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger, OutputSink } from "../types.ts";
 import type { RunRecordFile, RunStepRecord } from "./run-record.ts";
-import { newRunId, runPath, runsDir, writeRunRecord } from "./run-record.ts";
+import { RUN_SCHEMA_VERSION, newRunId, runPath, runsDir, writeRunRecord } from "./run-record.ts";
 
 export interface RunLogShape {
   /** Id of this run; also the stem of its record and log directory. */
@@ -61,7 +61,7 @@ export class FileRunLog implements RunLogShape {
     this.dir = join(root, ".bunsai", "logs", id);
     mkdirSync(this.dir, { recursive: true });
     this.record = {
-      schemaVersion: 1,
+      schemaVersion: RUN_SCHEMA_VERSION,
       runId: id,
       startedAt: new Date().toISOString(),
       cwd,
