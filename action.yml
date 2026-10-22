@@ -1,0 +1,27 @@
+name: bunsai
+description: Run a bunsai pipeline inside the published bunsai container image
+
+branding:
+  icon: play
+  color: purple
+
+inputs:
+  args:
+    description: Arguments passed to bunsai
+    required: false
+    default: run
+  image:
+    description: Container image to run
+    required: false
+    default: "ghcr.io/gjuoun/bunsai:0.2.5"
+  workdir:
+    description: Host directory mounted at /work
+    required: false
+    default: ${{ github.workspace }}
+
+runs:
+  using: composite
+  steps:
+    - name: bunsai
+      shell: bash
+      run: docker run --rm -v "${{ inputs.workdir }}:/work" -w /work "${{ inputs.image }}" ${{ inputs.args }}

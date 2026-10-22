@@ -47,12 +47,37 @@ image_version="$("$cli" run --rm "$image" --version 2>&1 | tr -d '[:space:]')"
 echo "tools=ok version=$version"
 
 if [ "$mode" = "--action" ]; then
-  tag="$(grep -o 'ghcr\.io/gjuoun/bunsai:[0-9][0-9.]*' "$root/action.yml" | head -1)"
-  [ "$tag" = "ghcr.io/gjuoun/bunsai:$version" ] || fail "action.yml default image is '${tag}', expected ghcr.io/gjuoun/bunsai:$version"
-  # Same command form as the composite action, against the local image.
-  action_log="$("$cli" run --rm -v "$root/examples:/work" -w /work "$image" run --force 2>&1)"
-  printf '%s\n' "$action_log" | grep -q '4/4 steps succeeded' || fail "action command form failed" "$action_log"
-  echo "action=ok tag=$version"
+  # actionlint validates workflows, not action metadata: parse action.yml for real instead.
+  scratch="$(mktemp -d)"
+  trap 'rm -rf "$scratch"' EXIT
+  cat > "$scratch/check-action.ts" <<'TS'
+const { readFileSync } = require("node:fs");
+const action: any = Bun.YAML.parse(readFileSync(process.argv[2], "utf8"));
+const version = JSON.parse(readFileSync(process.argv[3], "utf8")).version;
+const problems: string[] = [];
+if (action?.runs?.using !== "composite") problems.push("runs.using must be composite");
+if (!Array.isArray(action?.runs?.steps) || action.runs.steps.length === 0) problems.push("runs.steps must be non-empty");
+if (action?.runs?.steps?.[0]?.shell !== "bash") problems.push("the action step must set shell: bash");
+const image = action?.inputs?.image?.default;
+const args = action?.inputs?.args?.default;
+const workdir = action?.inputs?.workdir?.default;
+if (image !== `ghcr.io/gjuoun/bunsai:${version}`) problems.push(`inputs.image default is ${image}, want ghcr.io/gjuoun/bunsai:${version}`);
+if (args !== "run") problems.push(`inputs.args default is ${args}, want run`);
+if (typeof workdir !== "string" || !workdir.includes("github.workspace")) problems.push("inputs.workdir default must reference github.workspace");
+if (problems.length > 0) { console.error(problems.join("; ")); process.exit(1); }
+console.log(`action=ok tag=${version}`);
+TS
+  action_check="$(bun "$scratch/check-action.ts" "$root/action.yml" "$root/package.json" 2>&1)" \
+    || fail "action.yml" "$action_check"
+  # Same command form as the composite action: mount a workspace, run its pipeline in the image.
+  ws="$(mktemp -d /tmp/bunsai-action-ws.XXXXXX)"
+  trap 'rm -rf "$scratch" "$ws"' EXIT
+  printf '%s\n' \
+    'export default { steps: [{ name: "hello", run: (ctx) => ctx.shell("echo action-ok") }] };' \
+    > "$ws/bunsai.config.ts"
+  action_log="$("$cli" run --rm -v "$ws:/work" -w /work "$image" run 2>&1)"
+  printf '%s\n' "$action_log" | grep -q '1/1 steps succeeded' || fail "action command form failed" "$action_log"
+  echo "$action_check"
 fi
 
 if [ "$mode" = "--multiarch" ]; then
@@ -61,25 +86,37 @@ if [ "$mode" = "--multiarch" ]; then
   trap 'rm -rf "$dest"' EXIT
   multi_log="$(cd "$root" && docker buildx build --platform linux/amd64,linux/arm64 --output "type=oci,dest=$dest/image.oci" . 2>&1)" \
     || fail "multi-arch build" "$multi_log"
+  mkdir -p "$dest/oci"
   if [ -d "$dest/image.oci" ]; then
-    index="$dest/image.oci/index.json"
+    cp -R "$dest/image.oci/." "$dest/oci/"
   else
-    tar -xOf "$dest/image.oci" index.json > "$dest/index.json"
-    index="$dest/index.json"
+    tar -xf "$dest/image.oci" -C "$dest/oci"
   fi
+  # buildx wraps the result in an index of indexes, so walk nested manifests.
   cat > "$dest/check-index.ts" <<'TS'
-const { readFileSync } = require("node:fs");
-const index = JSON.parse(readFileSync(process.argv[2], "utf8"));
-const found: string[] = (index.manifests ?? []).flatMap((m: any) =>
-  m.platform ? [`${m.platform.os}/${m.platform.architecture}`] : []);
+const { existsSync, readFileSync } = require("node:fs");
+const root = process.argv[2];
+const read = (path: string) => JSON.parse(readFileSync(path, "utf8"));
+function platforms(node: any): string[] {
+  const out: string[] = [];
+  for (const manifest of node?.manifests ?? []) {
+    if (manifest.platform) out.push(`${manifest.platform.os}/${manifest.platform.architecture}`);
+    else if (typeof manifest.digest === "string") {
+      const blob = `${root}/blobs/${manifest.digest.replace(":", "/")}`;
+      if (existsSync(blob)) out.push(...platforms(read(blob)));
+    }
+  }
+  return out;
+}
+const found = [...new Set(platforms(read(`${root}/index.json`)))];
 const want = ["linux/amd64", "linux/arm64"];
 const missing = want.filter((p) => !found.includes(p));
 if (missing.length > 0) {
-  console.error(`missing ${missing.join(", ")} (index has ${found.join(", ")})`);
+  console.error(`missing ${missing.join(", ")} (index has ${found.join(", ") || "nothing"})`);
   process.exit(1);
 }
 console.log(`multiarch=ok ${want.join(",")}`);
 TS
-  index_log="$(bun "$dest/check-index.ts" "$index" 2>&1)" || fail "OCI index platforms" "$index_log"
+  index_log="$(bun "$dest/check-index.ts" "$dest/oci" 2>&1)" || fail "OCI index platforms" "$index_log"
   echo "$index_log"
 fi
