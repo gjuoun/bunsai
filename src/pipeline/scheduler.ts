@@ -1,4 +1,4 @@
-import type { PipelineStep } from "./types.ts";
+import type { PipelineStep } from "../types.ts";
 
 /**
  * Layered topological sort of pipeline steps (Kahn's algorithm).

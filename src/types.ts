@@ -30,39 +30,50 @@ export interface Pipeline {
   steps: PipelineStep[];
 }
 
-function isNonEmptyString(v: unknown): v is string {
-  return typeof v === "string" && v.trim().length > 0;
+export interface RunOptions {
+  /** Pipeline root: state lives in <root>/.bunsai/state.json. */
+  root: string;
+  /** Working directory for steps (default: root). */
+  cwd?: string;
+  /** Environment passed to steps and ctx.shell (default: process.env). */
+  env?: Record<string, string | undefined>;
+  logger?: Logger;
+  /** Max parallel steps via Effect Semaphore (default: 4). */
+  concurrency?: number;
+  /** Rerun this step and everything downstream of it. */
+  from?: string;
+  /** Ignore cached state; rerun every step. */
+  force?: boolean;
 }
 
-/**
- * Identity function that validates the pipeline shape and locks in the type.
- * Throws a plain Error with an actionable message on bad input.
- */
-export function definePipeline(pipeline: Pipeline): Pipeline {
-  if (pipeline === null || typeof pipeline !== "object") {
-    throw new Error('definePipeline: expected an object like { steps: [...] }, got ' + typeof pipeline);
-  }
-  if (!Array.isArray(pipeline.steps) || pipeline.steps.length === 0) {
-    throw new Error('definePipeline: "steps" must be a non-empty array — add at least one step, e.g. { name: "build", run: (ctx) => ctx.shell("...") }');
-  }
-  for (const step of pipeline.steps) {
-    if (step === null || typeof step !== "object") {
-      throw new Error("definePipeline: every step must be an object, got " + String(step));
-    }
-    if (!isNonEmptyString(step.name)) {
-      throw new Error("definePipeline: every step needs a non-empty string \"name\", got " + JSON.stringify(step.name));
-    }
-    if (typeof step.run !== "function") {
-      throw new Error(`definePipeline: step "${step.name}" needs a "run(ctx)" function`);
-    }
-    if (step.retries !== undefined && (typeof step.retries !== "number" || !Number.isInteger(step.retries) || step.retries < 0)) {
-      throw new Error(`definePipeline: step "${step.name}" has invalid retries ${JSON.stringify(step.retries)} — use a non-negative integer`);
-    }
-    if (step.dependsOn !== undefined) {
-      if (!Array.isArray(step.dependsOn) || step.dependsOn.some((d) => !isNonEmptyString(d))) {
-        throw new Error(`definePipeline: step "${step.name}" has invalid dependsOn ${JSON.stringify(step.dependsOn)} — use an array of step names`);
-      }
-    }
-  }
-  return pipeline;
+export interface StepOutcome {
+  name: string;
+  status: "success" | "failure" | "skipped";
+  attempts: number;
+  durationMs?: number;
+  cached?: boolean;
+  error?: string;
+}
+
+export interface RunResult {
+  ok: boolean;
+  steps: StepOutcome[];
+  totalMs: number;
+}
+
+export type StepStatus = "success" | "failure" | "skipped";
+
+export interface StepRecord {
+  status: StepStatus;
+  startedAt: string;
+  endedAt?: string;
+  exitCode?: number;
+  attempts: number;
+  /** wall-clock duration in ms, derived from startedAt/endedAt */
+  durationMs?: number;
+}
+
+/** Persisted run state: stepName -> last outcome. Written to .bunsai/state.json. */
+export interface PipelineState {
+  [stepName: string]: StepRecord;
 }

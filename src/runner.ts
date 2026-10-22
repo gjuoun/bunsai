@@ -1,39 +1,17 @@
 import { Cause, Duration, Effect, Exit } from "effect";
-import { makeShell } from "./shell.ts";
-import { topoLayers } from "./scheduler.ts";
-import { loadState, saveState, type PipelineState, type StepRecord } from "./state.ts";
-import type { Logger, Pipeline, PipelineStep, StepContext } from "./types.ts";
+import { makeShell } from "./services/shell.ts";
+import { topoLayers } from "./pipeline/scheduler.ts";
+import { loadState, saveState, type PipelineState, type StepRecord } from "./services/state.ts";
+import type {
+  Logger,
+  Pipeline,
+  PipelineStep,
+  RunOptions,
+  RunResult,
+  StepContext,
+  StepOutcome,
+} from "./types.ts";
 
-export interface RunOptions {
-  /** Pipeline root: state lives in <root>/.bunsai/state.json. */
-  root: string;
-  /** Working directory for steps (default: root). */
-  cwd?: string;
-  /** Environment passed to steps and ctx.shell (default: process.env). */
-  env?: Record<string, string | undefined>;
-  logger?: Logger;
-  /** Max parallel steps via Effect Semaphore (default: 4). */
-  concurrency?: number;
-  /** Rerun this step and everything downstream of it. */
-  from?: string;
-  /** Ignore cached state; rerun every step. */
-  force?: boolean;
-}
-
-export interface StepOutcome {
-  name: string;
-  status: "success" | "failure" | "skipped";
-  attempts: number;
-  durationMs?: number;
-  cached?: boolean;
-  error?: string;
-}
-
-export interface RunResult {
-  ok: boolean;
-  steps: StepOutcome[];
-  totalMs: number;
-}
 
 const DEFAULT_CONCURRENCY = 4;
 const RETRY_BASE_MS = 50;

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runPipeline } from "./runner.ts";
-import { loadState } from "./state.ts";
+import { loadState } from "./services/state.ts";
 import type { Pipeline, PipelineStep, Logger } from "./types.ts";
 
 let root: string;

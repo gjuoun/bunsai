@@ -1,4 +1,4 @@
-import { definePipeline } from "../../src/types.ts";
+import { definePipeline } from "../../src/index.ts";
 
 /**
  * Real-world example: test → docker build → container smoke test.

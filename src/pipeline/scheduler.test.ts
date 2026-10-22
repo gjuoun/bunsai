@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { topoLayers } from "./scheduler.ts";
-import type { PipelineStep } from "./types.ts";
+import type { PipelineStep } from "../types.ts";
 
 const step = (name: string, dependsOn?: string[]): PipelineStep => ({ name, dependsOn, run: () => {} });
 

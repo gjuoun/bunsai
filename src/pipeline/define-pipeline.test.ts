@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { definePipeline, type Pipeline } from "./types.ts";
+import type { Pipeline } from "../types.ts";
+import { definePipeline } from "./define-pipeline.ts";
 
 describe("definePipeline", () => {
   test("returns the pipeline as-is (identity, for type inference)", () => {
