@@ -7,7 +7,11 @@
     "bunsai": "src/cli.ts"
   },
   "scripts": {
-    "test": "bun test"
+    "test": "bun test",
+    "check:structure": "bun scripts/check-structure.ts",
+    "check:lazy": "bun scripts/check-lazy.ts",
+    "verify:examples": "bash scripts/verify-examples.sh",
+    "check": "bun test && bunx tsc -p tsconfig.json --noEmit && bun scripts/check-structure.ts && bun scripts/check-lazy.ts"
   },
   "license": "MIT",
   "dependencies": {
