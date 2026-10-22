@@ -1,0 +1,7 @@
+# Build context: only package.json, bun.lock, tsconfig.json and src/ are copied.
+.git
+node_modules
+.bunsai
+examples
+.github
+*.log

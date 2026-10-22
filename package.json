@@ -1,6 +1,6 @@
 {
   "name": "bunsai",
-  "version": "0.2.0",
+  "version": "0.2.5",
   "description": "CI/CD in code, not YAML — portable pipeline runner on Bun + Effect-TS",
   "type": "module",
   "bin": {
@@ -12,6 +12,7 @@
     "check:lazy": "bun scripts/check-lazy.ts",
     "verify:examples": "bash scripts/verify-examples.sh",
     "verify:cache": "bash scripts/verify-cache.sh",
+    "verify:image": "bash scripts/verify-image.sh",
     "check": "bun test && bunx tsc -p tsconfig.json --noEmit && bun scripts/check-structure.ts && bun scripts/check-lazy.ts"
   },
   "license": "MIT",

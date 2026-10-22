@@ -32,7 +32,7 @@ const rootCommand = Command.make("bunsai", {}, () => Effect.void).pipe(Command.w
 
 export const cli = Command.run(rootCommand, {
   name: "bunsai",
-  version: "0.2.0",
+  version: "0.2.5",
 });
 
 /** Run the CLI for one argv and return the process exit code. */
