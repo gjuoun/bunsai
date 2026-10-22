@@ -19,14 +19,14 @@ const runner = async (options: RunOptions) =>
   );
 
 describe("BunShellRunner", () => {
-  test("forStep returns the Promise-based ctx.shell contract", async () => {
+  test("forStep returns the Promise-based ctx.shell contract and exits 0 on success", async () => {
     const shell = (await runner({ root })).forStep("ok-step");
     const result = shell("true");
     expect(result).toBeInstanceOf(Promise);
     expect(await result).toBe(0);
   });
 
-  test("non-zero exit rejects naming the step and the code", async () => {
+  test("non-zero exit rejects with the step name, the command, and the code", async () => {
     const shell = (await runner({ root })).forStep("bad-step");
     const error = await shell("exit 7").then(
       () => null,
@@ -34,13 +34,18 @@ describe("BunShellRunner", () => {
     );
     expect(error).toBeInstanceOf(Error);
     expect(error!.message).toContain('"bad-step"');
+    expect(error!.message).toContain("exit 7");
     expect(error!.message).toContain("7");
   });
 
-  test("takes cwd and env from RunConfig", async () => {
+  test("runs in the cwd injected through RunConfig", async () => {
     writeFileSync(join(root, "marker.txt"), "x");
-    const shell = (await runner({ root, env: { ...process.env, BUNSAI_PROBE: "42" } })).forStep("cwd-step");
+    const shell = (await runner({ root })).forStep("cwd-step");
     expect(await shell("test -f marker.txt")).toBe(0);
+  });
+
+  test("passes the env injected through RunConfig to the child process", async () => {
+    const shell = (await runner({ root, env: { ...process.env, BUNSAI_PROBE: "42" } })).forStep("env-step");
     expect(await shell('test "$BUNSAI_PROBE" = 42')).toBe(0);
   });
 });
