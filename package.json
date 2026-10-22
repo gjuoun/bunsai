@@ -1,0 +1,16 @@
+{
+  "name": "bunsai",
+  "version": "0.1.0",
+  "description": "CI/CD in code, not YAML — portable pipeline runner on Bun + Effect-TS",
+  "type": "module",
+  "bin": {
+    "bunsai": "src/cli.ts"
+  },
+  "scripts": {
+    "test": "bun test"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "effect": "^4.0.5"
+  }
+}
