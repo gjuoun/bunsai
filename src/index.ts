@@ -7,4 +7,4 @@
  */
 export * from "./types.ts";
 export { definePipeline } from "./pipeline/define-pipeline.ts";
-export { runPipeline } from "./runner.ts";
+export { runPipeline } from "./pipeline/runner/run.ts";

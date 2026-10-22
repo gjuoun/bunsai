@@ -11,7 +11,7 @@ import { BunContext } from "@effect/platform-bun";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { Effect, Option } from "effect";
-import { runPipeline } from "./runner.ts";
+import { runPipeline } from "./pipeline/runner/run.ts";
 import type { Pipeline } from "./types.ts";
 
 /** Load and validate <cwd>/bunsai.config.ts (default export or named `pipeline`). */
