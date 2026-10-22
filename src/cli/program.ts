@@ -10,10 +10,13 @@ const runCommand = Command.make(
       Options.text("from").pipe(Options.withDescription("rerun this step and everything downstream of it"))
     ),
     force: Options.boolean("force").pipe(Options.withDescription("ignore the cache and rerun all steps")),
+    last: Options.boolean("last").pipe(
+      Options.withDescription("print the previous run's summary and tail the failed step's log (runs nothing)")
+    ),
   },
-  ({ from, force }) =>
+  ({ from, force, last }) =>
     Effect.promise(async () => {
-      process.exitCode = await executeRun(Option.isSome(from) ? from.value : undefined, force);
+      process.exitCode = await executeRun(Option.isSome(from) ? from.value : undefined, force, last);
     })
 );
 
@@ -21,7 +24,7 @@ const rootCommand = Command.make("bunsai", {}, () => Effect.void).pipe(Command.w
 
 export const cli = Command.run(rootCommand, {
   name: "bunsai",
-  version: "0.1.0",
+  version: "0.2.0",
 });
 
 /** Run the CLI for one argv and return the process exit code. */

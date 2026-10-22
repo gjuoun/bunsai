@@ -8,6 +8,7 @@ import type {
   StepRecord,
 } from "../../types.ts";
 import type { ShellRunnerShape } from "../../services/shell-runner.ts";
+import type { RunLogShape } from "../../services/run-log.ts";
 import type { StateStoreShape } from "../../services/state-store.ts";
 import { backoffMs } from "./graph.ts";
 
@@ -20,6 +21,8 @@ export interface StepRuntime {
   readonly store: StateStoreShape;
   /** Shared mutable run state: sibling writes must not clobber each other. */
   readonly state: PipelineState;
+  /** This run's record + step log directory. */
+  readonly runLog: RunLogShape;
 }
 
 /**
@@ -27,15 +30,33 @@ export interface StepRuntime {
  * every terminal outcome. Failures become StepOutcomes (never an Effect
  * failure), so one red step does not tear down its siblings.
  */
-export const runStep = (step: PipelineStep, runtime: StepRuntime): Effect.Effect<StepOutcome> =>
+export const runStep = (
+  step: PipelineStep,
+  runtime: StepRuntime,
+  inputHash: string
+): Effect.Effect<StepOutcome, Error> =>
   Effect.gen(function* () {
     const start = Date.now();
     const totalAttempts = 1 + (step.retries ?? 0);
+    const logPath = runtime.runLog.logPath(step.name);
+    const sink = runtime.runLog.outputSink(step.name);
+    const toSink = (msg: string): void => sink(new TextEncoder().encode(`[bunsai] ${msg}\n`));
+    // Step-scoped logger: the terminal keeps its stream, the step log gets a copy.
+    const logger: Logger = {
+      info: (msg) => {
+        runtime.logger.info(msg);
+        toSink(msg);
+      },
+      error: (msg) => {
+        runtime.logger.error(msg);
+        toSink(msg);
+      },
+    };
     const ctx: StepContext = {
       cwd: runtime.cwd,
       env: runtime.env,
-      logger: runtime.logger,
-      shell: runtime.shell.forStep(step.name),
+      logger,
+      shell: runtime.shell.forStep(step.name, sink),
     };
 
     let attempts = 0;
@@ -57,16 +78,16 @@ export const runStep = (step: PipelineStep, runtime: StepRuntime): Effect.Effect
           endedAt: new Date().toISOString(),
           attempts,
           durationMs,
+          inputHash,
         };
         runtime.state[step.name] = record;
         yield* runtime.store.save(runtime.state);
+        yield* runtime.runLog.recordStep({ ...record, name: step.name, logPath });
         return { name: step.name, status: "success" as const, attempts, durationMs };
       }
       const squashed = Cause.squash(outcome.cause);
       failure = squashed instanceof Error ? squashed : new Error(String(squashed));
-      runtime.logger.error(
-        `step "${step.name}" attempt ${attempt}/${totalAttempts} failed: ${failure.message}`
-      );
+      logger.error(`step "${step.name}" attempt ${attempt}/${totalAttempts} failed: ${failure.message}`);
       if (attempts < totalAttempts) {
         yield* Effect.sleep(Duration.millis(backoffMs(attempts)));
       }
@@ -80,9 +101,11 @@ export const runStep = (step: PipelineStep, runtime: StepRuntime): Effect.Effect
       endedAt: new Date().toISOString(),
       attempts,
       durationMs,
+      inputHash,
     };
     runtime.state[step.name] = record;
     yield* runtime.store.save(runtime.state);
-    runtime.logger.error(`step "${step.name}" failed after ${attempts} attempt(s): ${error}`);
+    yield* runtime.runLog.recordStep({ ...record, name: step.name, logPath, error });
+    logger.error(`step "${step.name}" failed after ${attempts} attempt(s): ${error}`);
     return { name: step.name, status: "failure" as const, attempts, durationMs, error };
   });
