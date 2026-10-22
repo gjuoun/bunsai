@@ -107,6 +107,47 @@ describe("cli end-to-end (@effect/cli)", () => {
     expect(run.out).toContain("bunsai.config.ts");
   });
 
+  test("--last prints the previous run's summary and tails the failed step's log", () => {
+    writeFileSync(
+      join(root, "bunsai.config.ts"),
+      `export default {
+  steps: [
+    {
+      name: "boom",
+      run: (ctx) => {
+        ctx.logger.info("before-boom");
+        throw new Error("kaboom");
+      },
+    },
+  ],
+};
+`
+    );
+    const failed = runCli(["run"], root);
+    expect(failed.exitCode).toBe(1);
+
+    const replay = runCli(["run", "--last"], root);
+    expect(replay.exitCode).toBe(0);
+    expect(replay.out).toContain("run 2");
+    expect(replay.out).toContain("boom");
+    expect(replay.out).toContain("✗ run failed — 1 step(s) failed");
+    expect(replay.out).toContain("(last 40 lines)");
+    expect(replay.out).toContain("kaboom");
+  });
+
+  test("--last without history exits 1 and points at .bunsai/runs", () => {
+    const none = runCli(["run", "--last"], root);
+    expect(none.exitCode).toBe(1);
+    expect(none.out).toContain(".bunsai/runs");
+  });
+
+  test("--last cannot be combined with --force or --from", () => {
+    const forced = runCli(["run", "--last", "--force"], root);
+    expect(forced.exitCode).toBe(1);
+    expect(forced.out).toContain("--last");
+    expect(forced.out).toContain("--force");
+  });
+
   test("--help exits 0 and documents --from/--force", () => {
     const help = runCli(["run", "--help"], root);
     expect(help.exitCode).toBe(0);

@@ -1,13 +1,23 @@
 import { Context, Effect, Layer } from "effect";
-import type { Pipeline, PipelineState, RunResult, StepOutcome, StepRecord } from "../../types.ts";
+import type {
+  Pipeline,
+  PipelineState,
+  PipelineStep,
+  RunResult,
+  StepOutcome,
+  StepRecord,
+} from "../../types.ts";
 import { LoggerService } from "../../services/logger.ts";
 import type { Logger } from "../../types.ts";
 import { RunConfig } from "../../services/run-config.ts";
 import type { RunConfigShape } from "../../services/run-config.ts";
 import { ShellRunner } from "../../services/shell-runner.ts";
 import type { ShellRunnerShape } from "../../services/shell-runner.ts";
+import { RunLog } from "../../services/run-log.ts";
+import type { RunLogShape } from "../../services/run-log.ts";
 import { StateStore } from "../../services/state-store.ts";
 import type { StateStoreShape } from "../../services/state-store.ts";
+import { hashStep } from "../input-hash.ts";
 import { topoLayers } from "../scheduler.ts";
 import { downstreamOf } from "./graph.ts";
 import { runStep } from "./step.ts";
@@ -31,11 +41,12 @@ export class LivePipelineRunner implements PipelineRunnerShape {
     private readonly store: StateStoreShape,
     private readonly shell: ShellRunnerShape,
     private readonly logger: Logger,
-    private readonly config: RunConfigShape
+    private readonly config: RunConfigShape,
+    private readonly runLog: RunLogShape
   ) {}
 
   run(pipeline: Pipeline): Effect.Effect<RunResult, Error> {
-    const { store, shell, logger, config } = this;
+    const { store, shell, logger, config, runLog } = this;
 
     return Effect.gen(function* () {
       const layers = yield* Effect.try({ try: () => topoLayers(pipeline.steps), catch: asError });
@@ -66,32 +77,54 @@ export class LivePipelineRunner implements PipelineRunnerShape {
         shell,
         store,
         state,
+        runLog,
       };
 
       for (const layer of layers) {
-        const runnable = [];
+        const runnable: { step: PipelineStep; inputHash: string }[] = [];
         for (const name of layer) {
           const step = byName.get(name)!;
           const depBlocked = (step.dependsOn ?? []).some((d) => blocked.has(d));
-          const cached = !config.force && !rerunSet.has(name) && prior[name]?.status === "success";
+          // Hashing reads declared inputs, so it happens here (inside Effect.sync)
+          // rather than in a pure helper; an I/O error fails the run with a plain Error.
+          const inputHash = depBlocked
+            ? undefined
+            : yield* Effect.sync(() => hashStep(step, config.cwd));
+          const forced = config.force || rerunSet.has(name);
+          const previouslyOk = prior[name]?.status === "success";
+          const hashMatches = inputHash !== undefined && prior[name]?.inputHash === inputHash;
+          const cached = !forced && previouslyOk && hashMatches;
           if (depBlocked) {
             blocked.add(name);
-            const record: StepRecord = { status: "skipped", startedAt: new Date().toISOString(), attempts: 0 };
+            const startedAt = new Date().toISOString();
+            const record: StepRecord = { status: "skipped", startedAt, attempts: 0 };
             state[name] = record;
             yield* store.save(state);
+            yield* runLog.recordStep({ name, status: "skipped", attempts: 0, startedAt });
             outcomes.push({ name, status: "skipped", attempts: 0 });
           } else if (cached) {
             logger.info(`skip (cached): ${name}`);
+            yield* runLog.recordStep({
+              name,
+              status: "skipped",
+              attempts: prior[name]!.attempts,
+              startedAt: new Date().toISOString(),
+              cached: true,
+              inputHash,
+            });
             outcomes.push({ name, status: "skipped", attempts: prior[name]!.attempts, cached: true });
           } else {
-            runnable.push(step);
+            if (!forced && previouslyOk && !hashMatches) {
+              logger.info(`cache invalidated: ${name} (input hash changed)`);
+            }
+            runnable.push({ step, inputHash: inputHash! });
           }
         }
         if (runnable.length === 0) continue;
         yield* Effect.forEach(
           runnable,
-          (step) =>
-            semaphore.withPermits(1)(runStep(step, runtime)).pipe(
+          ({ step, inputHash }) =>
+            semaphore.withPermits(1)(runStep(step, runtime, inputHash)).pipe(
               Effect.flatMap((outcome) =>
                 Effect.sync(() => {
                   outcomes.push(outcome);
@@ -104,7 +137,9 @@ export class LivePipelineRunner implements PipelineRunnerShape {
       }
 
       const ok = outcomes.every((o) => o.status !== "failure");
-      return { ok, steps: outcomes, totalMs: Date.now() - runStart };
+      const totalMs = Date.now() - runStart;
+      yield* runLog.finish(ok, totalMs);
+      return { ok, steps: outcomes, totalMs };
     });
   }
 }
@@ -112,7 +147,7 @@ export class LivePipelineRunner implements PipelineRunnerShape {
 export const pipelineRunnerLayer: Layer.Layer<
   PipelineRunner,
   never,
-  StateStore | ShellRunner | LoggerService | RunConfig
+  StateStore | ShellRunner | LoggerService | RunConfig | RunLog
 > = Layer.effect(
   PipelineRunner,
   Effect.gen(function* () {
@@ -120,6 +155,7 @@ export const pipelineRunnerLayer: Layer.Layer<
     const shell = yield* ShellRunner;
     const logger = yield* LoggerService;
     const config = yield* RunConfig;
-    return new LivePipelineRunner(store, shell, logger, config);
+    const runLog = yield* RunLog;
+    return new LivePipelineRunner(store, shell, logger, config, runLog);
   })
 );

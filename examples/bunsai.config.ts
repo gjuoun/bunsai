@@ -41,6 +41,9 @@ export default definePipeline({
       name: "deploy-dry-run",
       dependsOn: ["package"],
       retries: 2,
+      // Declared input: editing the pipeline definition reruns this leaf step.
+      // (.bunsai hides these files; the cache demo uses a content edit, not touch.)
+      inputs: ["bunsai.config.ts"],
       run: (ctx) => {
         // Flaky by design: fails until a marker file exists, succeeds after.
         // Delete examples/.bunsai/flaky.marker to make it flaky again.

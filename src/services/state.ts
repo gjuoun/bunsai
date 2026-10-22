@@ -1,22 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { PipelineState, StepRecord, StepStatus } from "../types.ts";
 
-export type StepStatus = "success" | "failure" | "skipped";
-
-export interface StepRecord {
-  status: StepStatus;
-  startedAt: string;
-  endedAt?: string;
-  exitCode?: number;
-  attempts: number;
-  /** wall-clock duration in ms, derived from startedAt/endedAt */
-  durationMs?: number;
-}
-
-/** Persisted run state: stepName -> last outcome. Written to .bunsai/state.json. */
-export interface PipelineState {
-  [stepName: string]: StepRecord;
-}
+export type { PipelineState, StepRecord, StepStatus } from "../types.ts";
 
 export function statePath(root: string): string {
   return join(root, ".bunsai", "state.json");
@@ -61,7 +47,7 @@ export function loadState(root: string): PipelineState {
   return parsed as PipelineState;
 }
 
-/** Persist state atomically enough for 0.1 (write-after-each-step), creating dirs as needed. */
+/** Persist state after each step, creating dirs as needed. */
 export function saveState(root: string, state: PipelineState): void {
   const path = statePath(root);
   mkdirSync(join(root, ".bunsai"), { recursive: true });
